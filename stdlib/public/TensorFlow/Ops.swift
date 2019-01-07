@@ -1335,8 +1335,8 @@ public extension Tensor where Scalar : BinaryFloatingPoint,
   ///
   /// - Parameters:
   ///   - axis: The batch dimension.
-  ///   - offset: The scalar offset, also known as beta.
-  ///   - scale: The scalar scale, also known as gamma.
+  ///   - offset: The offset, also known as beta.
+  ///   - scale: The scale, also known as gamma.
   ///   - epsilon: A small value added to the denominator for numerical
   ///     stability.
   // NOTE: It is not possible to provide a floating point initial value for
@@ -1345,11 +1345,12 @@ public extension Tensor where Scalar : BinaryFloatingPoint,
   @inlinable @inline(__always)
   @differentiable(wrt: (self, .1, .2), adjoint: _adjointBatchNormalized)
   func batchNormalized(
-    alongAxis axis: Int32,
-    offset: Scalar = 0,
-    scale: Scalar = 1,
+    alongAxis axis: Int32 = -1,
+    offset: Tensor = Tensor<Scalar>(0),
+    scale: Tensor = Tensor<Scalar>(1),
     epsilon: Scalar = 0.001
   ) -> Tensor {
+    let axis = axis < 0 ? axis + self.rank : axis
     let mean = self.mean(alongAxes: axis)
     let squaredDiff: Tensor = Raw.squaredDifference(self, mean)
     let variance = squaredDiff.mean(alongAxes: axis)
