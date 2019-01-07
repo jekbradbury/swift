@@ -1466,9 +1466,37 @@ static void collectVariedValues(SILValue value,
       LLVM_DEBUG(getADDebugStream() << "VARIED @ " << inputIndex << ":\n"
                                     << buffer << '\n');
       variedValues.insert(buffer);
-      visited.insert(buffer);
+      visited.insert(buffer); // TODO is this a bug?
       collectVariedValues(buffer, variedValues, inputIndex, visited);
       continue;
+    }
+    if (auto *sei = dyn_cast<StructExtractInst>(inst)) {
+      auto structTy = sei->getOperand()->getType().getASTType();
+      auto cotangentSpace = structTy->getAutoDiffAssociatedVectorSpace(
+          AutoDiffAssociatedVectorSpaceKind::Cotangent,
+          LookUpConformanceInModule(sei->getModule().getSwiftModule()));
+      if (!cotangentSpace) {
+        continue;
+      }
+      auto cotangentVectorTy = cotangentSpace->getType()
+          ->getCanonicalType();
+      assert(!sei->getModule().Types.getTypeLowering(cotangentVectorTy)
+          .isAddressOnly());
+      auto *cotangentVectorDecl =
+          cotangentVectorTy->getStructOrBoundGenericStruct();
+      assert(cotangentVectorDecl);
+
+      // Find the corresponding field in the cotangent space, if present.
+      bool hasCorrespondingField = false;
+      if (cotangentVectorDecl == sei->getStructDecl())
+        hasCorrespondingField = true;
+      else {
+        auto correspondingFieldLookup =
+            cotangentVectorDecl->lookupDirect(sei->getField()->getName());
+        hasCorrespondingField = correspondingFieldLookup.size() == 1;
+      }
+      if (!hasCorrespondingField)
+        continue;
     }
     // For other instructions, consider their results varied.
     for (auto val : inst->getResults()) {
