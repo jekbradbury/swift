@@ -253,11 +253,36 @@ extension Tensor {
   }
 
   @inlinable
+  func _adjointReshaped(
+    seed: Tensor, originalValue: Tensor, to newShape: TensorShape
+  ) -> Tensor {
+    let seed = seed.broadcast(like: originalValue)
+    return seed.reshaped(toShape: shapeTensor)
+  }
+
+  @inlinable
   func _adjointExpandingShape(
     seed: Tensor, originalValue: Tensor, at shapeIndex: Int32
   ) -> Tensor {
     let seed = seed.broadcast(like: originalValue)
     return seed.squeezingShape(at: shapeIndex)
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Reduction
+//===----------------------------------------------------------------------===//
+
+extension Tensor where Scalar : BinaryFloatingPoint,
+                       Scalar : Differentiable,
+                       Scalar.CotangentVector == Scalar {
+  @inlinable
+  func _adjointSumToScalar(
+    seed: Tensor, originalValue: Tensor
+  ) -> Tensor {
+    //let seedAsTensor = Tensor<Scalar>(seed)
+    //print("adjointSumToScalar: \(seed), \(seedAsTensor)\n")
+    return seed.broadcast(like: self)
   }
 }
 
@@ -452,4 +477,12 @@ func _adjointRelu<T : BinaryFloatingPoint>(
   _ seed: Tensor<T>, _ originalValue: Tensor<T>, _ x: Tensor<T>
 ) -> Tensor<T> {
   return Tensor(x.elementsGreater(0)) * seed
+}
+
+@inlinable
+func _adjointLogSoftmax<T : BinaryFloatingPoint & Differentiable>(
+  _ seed: Tensor<T>, _ originalValue: Tensor<T>, _ x: Tensor<T>
+) -> Tensor<T> where T.CotangentVector == T {
+  let softmax = exp(originalValue)
+  return seed - x.sum(alongAxes: x.rank - 1) * softmax
 }

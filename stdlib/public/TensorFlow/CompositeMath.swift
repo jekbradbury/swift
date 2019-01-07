@@ -34,7 +34,9 @@ public func relu<T : BinaryFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
 /// Computes the softmax of the specified tensor element-wise.
 /// Specifically, computes `exp(x) / exp(x).sum()`.
 @inlinable @inline(__always)
-public func softmax<T : BinaryFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+public func softmax<T : BinaryFloatingPoint & Differentiable>(
+  _ x: Tensor<T>
+) -> Tensor<T> where T.CotangentVector == T {
   let expx = exp(x)
   let sum = expx.sum()
   return expx / sum
@@ -43,9 +45,9 @@ public func softmax<T : BinaryFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
 /// Computes the softmax of the specified tensor along the specified axis.
 /// Specifically, computes `exp(x) / exp(x).sum(alongAxes: axis)`.
 @inlinable @inline(__always)
-public func softmax<T : BinaryFloatingPoint>(
+public func softmax<T : BinaryFloatingPoint & Differentiable>(
   _ x: Tensor<T>, alongAxis axis: Int32
-) -> Tensor<T> {
+) -> Tensor<T> where T.CotangentVector == T {
   let expx = exp(x)
   return expx / expx.sum(alongAxes: axis)
 }
