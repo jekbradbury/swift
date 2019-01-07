@@ -29,6 +29,7 @@
 #include "swift/AST/DiagnosticsSIL.h"
 #include "swift/AST/Expr.h"
 #include "swift/AST/GenericEnvironment.h"
+#include "swift/AST/GenericSignatureBuilder.h"
 #include "swift/AST/Module.h"
 #include "swift/AST/ParameterList.h"
 #include "swift/AST/SubstitutionMap.h"
@@ -4426,6 +4427,30 @@ DifferentiationTask::DifferentiationTask(ADContext &context,
   createVJP();
 }
 
+// Return the expected generic signature for autodiff associated functions given
+// a SILDifferentiableAttr. The expected generic signature is built from the
+// original generic signature and the attribute's requirements.
+static GenericSignature *
+getAutodiffAssociatedFunctionGenericSignature(SILDifferentiableAttr *attr) {
+  auto original = attr->getOriginal();
+  auto originalGenEnv = original->getGenericEnvironment();
+  if (!originalGenEnv)
+    return nullptr;
+  GenericSignatureBuilder builder(original->getASTContext());
+  // Add original generic signature.
+  builder.addGenericSignature(originalGenEnv->getGenericSignature());
+  // Add where clause requirements.
+  auto source =
+      GenericSignatureBuilder::FloatingRequirementSource::forAbstract();
+  for (auto &req : attr->getRequirements())
+    builder.addRequirement(req, source, original->getModule().getSwiftModule());
+  auto canGenericSig = std::move(builder)
+                           .computeGenericSignature(
+                               SourceLoc(), /*allowConcreteGenericParams=*/true)
+                           ->getCanonicalSignature();
+  return canGenericSig;
+}
+
 void DifferentiationTask::createEmptyPrimal() {
   assert(primalSynthesisState == FunctionSynthesisState::Needed);
   assert(!primalInfo);
@@ -4438,6 +4463,7 @@ void DifferentiationTask::createEmptyPrimal() {
                         .getIdentifier("AD__" + original->getName().str() +
                                        "__primal_" + indices.mangle())
                         .str();
+  auto *primalGenericSig = getAutodiffAssociatedFunctionGenericSignature(attr);
   StructDecl *primalValueStructDecl = context.createPrimalValueStruct(this);
   primalInfo = std::unique_ptr<PrimalInfo>(
       new PrimalInfo(primalValueStructDecl, module));
@@ -4452,7 +4478,7 @@ void DifferentiationTask::createEmptyPrimal() {
   // Create result info for checkpoints.
   auto originalTy = original->getLoweredFunctionType();
   auto primalTy = SILFunctionType::get(
-      originalTy->getGenericSignature(), originalTy->getExtInfo(),
+      primalGenericSig, originalTy->getExtInfo(),
       originalTy->getCoroutineKind(), originalTy->getCalleeConvention(),
       originalTy->getParameters(), originalTy->getYields(), results,
       originalTy->getOptionalErrorResult(), context.getASTContext());
@@ -4577,10 +4603,15 @@ void DifferentiationTask::createEmptyAdjoint() {
                      .getIdentifier("AD__" + original->getName().str() +
                                     "__adjoint_" + getIndices().mangle())
                      .str();
+  auto *adjGenericSig = getAutodiffAssociatedFunctionGenericSignature(attr);
+  auto *adjGenericEnv = adjGenericSig
+      ? adjGenericSig->createGenericEnvironment()
+      : nullptr;
   auto adjType = SILFunctionType::get(
-      origTy->getGenericSignature(), origTy->getExtInfo(),
-      origTy->getCoroutineKind(), origTy->getCalleeConvention(), adjParams, {},
-      adjResults, None, original->getASTContext());
+      adjGenericSig, origTy->getExtInfo(), origTy->getCoroutineKind(),
+      origTy->getCalleeConvention(), adjParams, {}, adjResults, None,
+      original->getASTContext());
+
   SILOptFunctionBuilder fb(context.getTransform());
   // We set generated adjoint linkage to Hidden because generated adjoints are
   // never called cross-module in VJP mode: all cross-module calls to associated
@@ -4590,9 +4621,8 @@ void DifferentiationTask::createEmptyAdjoint() {
   // also need to update TBDGen to generate TBD entries for public adjoints.
   auto linkage = SILLinkage::Hidden;
   adjoint = fb.createFunction(
-      linkage, adjName, adjType, original->getGenericEnvironment(),
-      original->getLocation(), original->isBare(), IsNotTransparent,
-      original->isSerialized());
+      linkage, adjName, adjType, adjGenericEnv, original->getLocation(),
+      original->isBare(), IsNotTransparent, original->isSerialized());
   adjoint->setUnqualifiedOwnership();
   adjoint->setDebugScope(new (module)
                              SILDebugScope(original->getLocation(), adjoint));
@@ -4607,16 +4637,21 @@ void DifferentiationTask::createJVP() {
   // === Create an empty JVP. ===
   auto jvpName =
       "AD__" + original->getName().str() + "__jvp_" + getIndices().mangle();
+  auto *jvpGenericSig = getAutodiffAssociatedFunctionGenericSignature(attr);
+  auto *jvpGenericEnv = jvpGenericSig
+      ? jvpGenericSig->createGenericEnvironment()
+      : nullptr;
   auto jvpType = originalTy->getAutoDiffAssociatedFunctionType(
       getIndices().parameters, getIndices().source, 1,
       AutoDiffAssociatedFunctionKind::JVP, module,
-      LookUpConformanceInModule(module.getSwiftModule()));
+      LookUpConformanceInModule(module.getSwiftModule()),
+      jvpGenericSig);
 
   SILOptFunctionBuilder fb(context.getTransform());
   jvp = fb.createFunction(original->getLinkage(), jvpName, jvpType,
-                          original->getGenericEnvironment(),
-                          original->getLocation(), original->isBare(),
-                          IsNotTransparent, original->isSerialized());
+                          jvpGenericEnv, original->getLocation(),
+                          original->isBare(), IsNotTransparent,
+                          original->isSerialized());
   jvp->setUnqualifiedOwnership();
   jvp->setDebugScope(new (module) SILDebugScope(original->getLocation(), jvp));
   attr->setJVPName(jvp->getName());
@@ -4663,15 +4698,18 @@ void DifferentiationTask::createVJP() {
                      .getIdentifier("AD__" + original->getName().str() +
                                     "__vjp_" + getIndices().mangle())
                      .str();
+  auto *vjpGenericSig = getAutodiffAssociatedFunctionGenericSignature(attr);
+  auto *vjpGenericEnv = vjpGenericSig
+      ? vjpGenericSig->createGenericEnvironment()
+      : nullptr;
   auto vjpType = originalTy->getAutoDiffAssociatedFunctionType(
       getIndices().parameters, getIndices().source, 1,
       AutoDiffAssociatedFunctionKind::VJP, module,
-      LookUpConformanceInModule(module.getSwiftModule()));
+      LookUpConformanceInModule(module.getSwiftModule()), vjpGenericSig);
 
   SILOptFunctionBuilder fb(context.getTransform());
   auto linkage = getAutoDiffFunctionLinkage(original->getLinkage());
-  vjp = fb.createFunction(linkage, vjpName, vjpType,
-                          original->getGenericEnvironment(),
+  vjp = fb.createFunction(linkage, vjpName, vjpType, vjpGenericEnv,
                           original->getLocation(), original->isBare(),
                           IsNotTransparent, original->isSerialized());
   vjp->setUnqualifiedOwnership();
