@@ -3799,8 +3799,8 @@ public:
             eltVals.push_back(av);
           else
             eltVals.push_back(AdjointValue::getZero(
-                getCotangentType(field->getType()->getCanonicalType(),
-                                 getModule())));
+                SILType::getPrimitiveObjectType(field->getType()
+                                                ->getCanonicalType())));
         }
         addAdjointValue(sei->getOperand(),
                         AdjointValue::getAggregate(cotangentVectorSILTy,
