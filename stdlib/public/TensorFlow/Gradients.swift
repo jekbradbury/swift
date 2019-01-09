@@ -411,11 +411,32 @@ extension Tensor where Scalar : Differentiable & FloatingPoint {
   }
 
   @inlinable
+  func _adjointReshaped(
+    seed: Tensor, originalValue: Tensor, to newShape: TensorShape
+  ) -> Tensor {
+    let seed = seed.broadcast(like: originalValue)
+    return seed.reshaped(toShape: shapeTensor)
+  }
+
+  @inlinable
   func _adjointExpandingShape(
     seed: Tensor, originalValue: Tensor, at shapeIndex: Int32
   ) -> Tensor {
     let seed = seed.broadcast(like: originalValue)
     return seed.squeezingShape(at: shapeIndex)
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Reduction
+//===----------------------------------------------------------------------===//
+
+ extension Tensor where Scalar : Differentiable & FloatingPoint {
+  @inlinable
+  func _adjointSumToScalar(
+    seed: Tensor, originalValue: Tensor
+  ) -> Tensor {
+    return seed.broadcast(like: self)
   }
 }
 
@@ -452,7 +473,7 @@ extension Tensor where Scalar : BinaryFloatingPoint & Differentiable,
     let dim = Tensor(Tensor<Int32>(shapeTensor[axis]))
     let tmp = (dNorm * inv) + (dVariance * 2 * dMean / dim)
     let dSelf = tmp + (dMean / dim)
-    return (dSelf, _TFGetScalarOrDie(dOffset.handle),  
+    return (dSelf, _TFGetScalarOrDie(dOffset.handle),
             _TFGetScalarOrDie(dScale.handle))
   }
 }
@@ -609,4 +630,12 @@ func _adjointRelu<T : Differentiable &  FloatingPoint>(
   _ seed: Tensor<T>, _ originalValue: Tensor<T>, _ x: Tensor<T>
 ) -> Tensor<T> {
   return Tensor(x .> 0) * seed
+}
+
+@inlinable
+func _adjointLogSoftmax<T : Differentiable & FloatingPoint>(
+  _ seed: Tensor<T>, _ originalValue: Tensor<T>, _ x: Tensor<T>
+) -> Tensor<T> {
+  let softmax = exp(originalValue)
+  return seed - x.sum(alongAxes: x.rank - 1) * softmax
 }

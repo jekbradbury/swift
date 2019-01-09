@@ -901,6 +901,10 @@ public extension Tensor where Scalar : Numeric {
 
 /// Computes the log-softmax of the specified tensor element-wise.
 @inlinable @inline(__always)
+@differentiable(
+  adjoint: _adjointLogSoftmax
+  where T : Differentiable
+)
 public func logSoftmax<T : FloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
   return Raw.logSoftmax(logits: x)
 }
@@ -1107,6 +1111,10 @@ public extension Tensor where Scalar : Numeric {
   // NOTE: This overload is necessary, otherwise `sum()` would refer
   // to the variadic method `sum(squeezingAxes:)` with zero indices.
   @inlinable @inline(__always)
+  @differentiable(
+    adjoint: _adjointSumToScalar
+    where T : Differentiable & FloatingPoint
+  )
   func sum() -> Tensor {
     let axes = Tensor<Int32>(rangeFrom: 0, to: rank, stride: 1)
     return Raw.sum(self, reductionIndices: axes)
