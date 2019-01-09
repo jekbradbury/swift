@@ -444,19 +444,17 @@ extension Tensor where Scalar : Differentiable & FloatingPoint {
 // Normalization
 //===----------------------------------------------------------------------===//
 
-extension Tensor where Scalar : BinaryFloatingPoint & Differentiable,
-                       Scalar == Scalar.CotangentVector {
+extension Tensor where Scalar : Differentiable & FloatingPoint {
   // TODO: Verify that these calculations are correct.
   @inlinable
   func _adjointBatchNormalized(
     seed: Tensor,
     originalValue: Tensor,
-    alongAxis axis: Int32,
     offset: Tensor,
     scale: Tensor,
-    epsilon: Scalar
-  ) -> (Tensor, Tensor, Tensor) {
-    let axis = axis < 0 ? axis + self.rank : axis
+    epsilon: Tensor
+  ) -> (Tensor, Tensor, Tensor, Tensor) {
+    let axis = self.rank - 1
     let mean = self.mean(alongAxes: axis)
     let squaredDiff: Tensor = Raw.squaredDifference(self, mean)
     let variance = squaredDiff.mean(alongAxes: axis)
@@ -474,7 +472,7 @@ extension Tensor where Scalar : BinaryFloatingPoint & Differentiable,
     let dim = Tensor(Tensor<Int32>(shapeTensor[axis]))
     let tmp = (dNorm * inv) + (dVariance * 2 * dMean / dim)
     let dSelf = tmp + (dMean / dim)
-    return (dSelf, dOffset, dScale)
+    return (dSelf, dOffset, dScale, Tensor<Scalar>(0))
   }
 }
 

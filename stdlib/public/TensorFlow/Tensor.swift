@@ -788,7 +788,9 @@ public extension Tensor {
   /// - Precondition: The number of scalars matches the new shape.
   @inlinable @inline(__always)
   @differentiable(
+    wrt: (self),
     adjoint: _adjointReshaped(seed:originalValue:to:)
+    where Scalar : Differentiable & FloatingPoint
   ) // TODO: remove when AD works on generic functions
   func reshaped(to newShape: TensorShape) -> Tensor {
     return reshaped(toShape: Tensor<Int32>(newShape.dimensions))

@@ -1112,8 +1112,9 @@ public extension Tensor where Scalar : Numeric {
   // to the variadic method `sum(squeezingAxes:)` with zero indices.
   @inlinable @inline(__always)
   @differentiable(
+    wrt: (self),
     adjoint: _adjointSumToScalar
-    where T : Differentiable & FloatingPoint
+    where Scalar : Differentiable & FloatingPoint
   )
   func sum() -> Tensor {
     let axes = Tensor<Int32>(rangeFrom: 0, to: rank, stride: 1)
@@ -1424,7 +1425,7 @@ public extension Tensor {
 // Normalization
 //===----------------------------------------------------------------------===//
 
-public extension Tensor where Scalar : BinaryFloatingPoint {
+public extension Tensor where Scalar : FloatingPoint {
   /// Computes the batch normalized tensor along the specified axis.
   ///
   /// Specifically, returns `(self - mu)/(var + epsilon) * gamma + beta` where
@@ -1439,16 +1440,15 @@ public extension Tensor where Scalar : BinaryFloatingPoint {
   ///     stability.
   @inlinable @inline(__always)
   @differentiable(
-    wrt: (self, .1, .2), adjoint: _adjointBatchNormalized
-    where Scalar : Differentiable, Scalar == Scalar.CotangentVector
+    wrt: (self, .0, .1, .2), adjoint: _adjointBatchNormalized
+    where Scalar : Differentiable
   )
   func batchNormalized(
-    alongAxis axis: Int32 = -1,
-    offset: Tensor = Tensor<Scalar>(0),,
-    scale: Tensor = Tensor<Scalar>(1),
-    epsilon: Scalar = 0.001
+    offset: Tensor,
+    scale: Tensor,
+    epsilon: Tensor
   ) -> Tensor {
-    let axis = axis < 0 ? axis + self.rank : axis
+    let axis = self.rank - 1
     let mean = self.mean(alongAxes: axis)
     let squaredDiff: Tensor = Raw.squaredDifference(self, mean)
     let variance = squaredDiff.mean(alongAxes: axis)
