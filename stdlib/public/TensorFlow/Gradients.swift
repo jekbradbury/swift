@@ -452,10 +452,11 @@ extension Tensor where Scalar : BinaryFloatingPoint & Differentiable,
     seed: Tensor,
     originalValue: Tensor,
     alongAxis axis: Int32,
-    offset: Scalar,
-    scale: Scalar,
+    offset: Tensor,
+    scale: Tensor,
     epsilon: Scalar
-  ) -> (Tensor, Scalar, Scalar) {
+  ) -> (Tensor, Tensor, Tensor) {
+    let axis = axis < 0 ? axis + self.rank : axis
     let mean = self.mean(alongAxes: axis)
     let squaredDiff: Tensor = Raw.squaredDifference(self, mean)
     let variance = squaredDiff.mean(alongAxes: axis)
@@ -473,8 +474,7 @@ extension Tensor where Scalar : BinaryFloatingPoint & Differentiable,
     let dim = Tensor(Tensor<Int32>(shapeTensor[axis]))
     let tmp = (dNorm * inv) + (dVariance * 2 * dMean / dim)
     let dSelf = tmp + (dMean / dim)
-    return (dSelf, _TFGetScalarOrDie(dOffset.handle),
-            _TFGetScalarOrDie(dScale.handle))
+    return (dSelf, dOffset, dScale)
   }
 }
 
