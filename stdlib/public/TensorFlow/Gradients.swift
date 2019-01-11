@@ -637,3 +637,10 @@ func _adjointLogSoftmax<T : Differentiable & FloatingPoint>(
   let softmax = exp(originalValue)
   return seed - x.sum(alongAxes: x.rank - 1) * softmax
 }
+
+@inlinable
+func _adjointSigmoid<T : Differentiable & FloatingPoint>(
+  _ seed: Tensor<T>, _ originalValue: Tensor<T>, _ x: Tensor<T>
+) -> Tensor<T> {
+  return seed * originalValue * (1 - originalValue)
+}

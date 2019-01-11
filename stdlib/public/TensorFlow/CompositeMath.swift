@@ -19,8 +19,10 @@
 /// Computes `sigmoid` of the specified tensor element-wise.
 /// Specifically, computes `1 / (1 + exp(-x))`.
 @inlinable @inline(__always)
+// TODO should not need a primitive eventually
+@differentiable(adjoint: _adjointSigmoid where T : Differentiable)
 public func sigmoid<T>(_ x: Tensor<T>) -> Tensor<T>
-  where T : Differentiable & FloatingPoint
+  where T : FloatingPoint
 {
   return 1 / (1 + exp(-x))
 }
